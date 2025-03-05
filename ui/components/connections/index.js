@@ -75,11 +75,45 @@ function Connections(props) {
     k8sconfig,
     connectionMetadataState,
     meshsyncControllerState,
+    router,
   } = props;
   const [_operatorState] = useState(operatorState || []);
-  const [tab, setTab] = useState(0);
   const _operatorStateRef = useRef(_operatorState);
   _operatorStateRef.current = _operatorState;
+
+  // Get both tab and id parameters from URL query
+  const urlTab = router.query.tab;
+  const connectionId = router.query.id || null;
+
+  // Set initial tab state based on URL parameter
+  // 0 for connections tab, 1 for meshsync tab
+  const initialTab = urlTab === 'meshsync' ? 1 : 0;
+  const [tab, setTab] = useState(initialTab);
+
+  // Handle tab change and update URL query params
+  const handleTabChange = (e, newTab) => {
+    e.stopPropagation();
+    setTab(newTab);
+
+    // Update URL query parameters based on new tab
+    const tabName = newTab === 0 ? 'connections' : 'meshsync';
+    const query = { tab: tabName };
+
+    // Preserve the ID parameter if it exists
+    if (connectionId) {
+      query.id = connectionId;
+    }
+
+    // Update URL without triggering a full page reload
+    router.push(
+      {
+        pathname: router.pathname,
+        query: query,
+      },
+      undefined,
+      { shallow: true },
+    );
+  };
 
   return (
     <NoSsr>
@@ -88,10 +122,7 @@ function Connections(props) {
           <AppBar position="static" color="default" style={{ marginBottom: '3rem' }}>
             <ConnectionTabs
               value={tab}
-              onChange={(e, newTab) => {
-                e.stopPropagation();
-                setTab(newTab);
-              }}
+              onChange={handleTabChange}
               indicatorColor="primary"
               textColor="primary"
               variant="fullWidth"
@@ -122,6 +153,7 @@ function Connections(props) {
             <ConnectionTable
               meshsyncControllerState={meshsyncControllerState}
               connectionMetadataState={connectionMetadataState}
+              connectionId={tab === 0 ? connectionId : null} // Only pass ID when on connections tab
             />
           )}
           {tab === 1 && (
@@ -129,6 +161,7 @@ function Connections(props) {
               updateProgress={updateProgress}
               selectedK8sContexts={selectedK8sContexts}
               k8sconfig={k8sconfig}
+              resourceId={tab === 1 ? connectionId : null} // Only pass ID when on meshsync tab
             />
           )}
         </>

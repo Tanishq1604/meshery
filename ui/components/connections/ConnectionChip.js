@@ -1,3 +1,4 @@
+import React from 'react';
 import { Avatar, useTheme } from '@layer5/sistent';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';

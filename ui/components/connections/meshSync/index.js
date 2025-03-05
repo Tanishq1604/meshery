@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Tooltip, Grid, FormControl, MenuItem, Table, FormattedTime } from '@layer5/sistent';
+import { useRouter } from 'next/router'; // Add this import
+import { Tooltip, Grid, FormControl, MenuItem, CustomTooltip, Table } from '@layer5/sistent';
+import { formatDate } from '../../DataFormatter';
+
 import { useNotification } from '../../../utils/hooks/useNotification';
 import { EVENT_TYPES } from '../../../lib/event-types';
 import {
@@ -40,8 +43,12 @@ const ACTION_TYPES = {
 };
 
 export default function MeshSyncTable(props) {
-  const { updateProgress, selectedK8sContexts, k8sconfig } = props;
+  // Destructure resourceId from props
+  const { updateProgress, selectedK8sContexts, k8sconfig, resourceId } = props;
+  const router = useRouter(); // Initialize router
   const callbackRef = useRef();
+  // Add this line to define isUserAction ref
+  const isUserAction = useRef(true);
   const [openRegistrationModal, setRegistrationModal] = useState(false);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
@@ -77,13 +84,11 @@ export default function MeshSyncTable(props) {
     clusterIds: JSON.stringify(getK8sClusterIdsFromCtxId(selectedK8sContexts, k8sconfig)),
   });
   if (isError) {
-    if (isError) {
-      notify({
-        message: 'Error fetching MeshSync Resources',
-        event_type: EVENT_TYPES.ERROR,
-        details: meshSyncError?.data,
-      });
-    }
+    notify({
+      message: 'Error fetching MeshSync Resources',
+      event_type: EVENT_TYPES.ERROR,
+      details: meshSyncError?.data,
+    });
   }
   const { data: clusterSummary } = useGetMeshSyncResourceKindsQuery({
     page: page,
@@ -420,12 +425,56 @@ export default function MeshSyncTable(props) {
     },
     onRowExpansionChange: (_, allRowsExpanded) => {
       setRowsExpanded(allRowsExpanded.slice(-1).map((item) => item.index));
-      // setShowMore(false);
+
+      // Only update URL if this was triggered by a user click, not by our URL-based useEffect
+      if (isUserAction.current) {
+        if (allRowsExpanded.length > 0) {
+          const lastExpanded = allRowsExpanded[allRowsExpanded.length - 1];
+          const expandedRowId = meshSyncResources[lastExpanded.index]?.id;
+
+          if (expandedRowId && expandedRowId !== resourceId) {
+            router.push(
+              {
+                pathname: router.pathname,
+                query: {
+                  tab: 'meshsync',
+                  id: expandedRowId,
+                },
+              },
+              undefined,
+              { shallow: true },
+            );
+          }
+        } else if (resourceId) {
+          router.push(
+            {
+              pathname: router.pathname,
+              query: { tab: 'meshsync' },
+            },
+            undefined,
+            { shallow: true },
+          );
+        }
+      }
+
+      // Reset the flag after handling
+      isUserAction.current = true;
     },
     renderExpandableRow: (rowData) => {
       const colSpan = rowData.length;
       const columnName = 'metadata'; // Name of the column containing the metadata
       const columnIndex = columns.findIndex((column) => column.name === columnName);
+
+      // Add safety check for when metadata might not be available
+      if (columnIndex === -1 || !rowData[columnIndex]) {
+        return (
+          <TableCell colSpan={colSpan}>
+            <div style={{ padding: '20px', textAlign: 'center' }}>
+              No metadata available for this resource
+            </div>
+          </TableCell>
+        );
+      }
 
       // Access the metadata value using the column index
       const metadata = rowData[columnIndex];
@@ -512,6 +561,28 @@ export default function MeshSyncTable(props) {
     updateCols(columns);
   }, []);
 
+  // Deep linking functionality - just expand the row when ID is in the URL
+  // but don't modify the URL further
+  useEffect(() => {
+    if (resourceId && meshSyncResources && meshSyncResources.length > 0 && pageSize > 0) {
+      // Temporarily set isUserAction to false so onRowExpansionChange won't update URL
+      isUserAction.current = false;
+
+      const resourceIndex = meshSyncResources.findIndex((resource) => resource.id === resourceId);
+      if (resourceIndex !== -1) {
+        // Only update rows expanded if different than current state
+        if (rowsExpanded.length === 0 || rowsExpanded[0] !== resourceIndex) {
+          setRowsExpanded([resourceIndex]);
+        }
+
+        const resourcePage = Math.floor(resourceIndex / pageSize);
+        if (resourcePage !== page) {
+          setPage(resourcePage);
+        }
+      }
+    }
+  }, [resourceId, meshSyncResources, pageSize]);
+
   return (
     <>
       <ToolWrapper style={{ marginBottom: '5px', marginTop: '-30px' }}>
@@ -547,6 +618,7 @@ export default function MeshSyncTable(props) {
           />
         </div>
       </ToolWrapper>
+
       <ResponsiveDataTable
         data={meshSyncResources}
         columns={columns}
@@ -555,6 +627,7 @@ export default function MeshSyncTable(props) {
         updateCols={updateCols}
         columnVisibility={columnVisibility}
       />
+
       <RegisterConnectionModal
         handleRegistrationModalClose={handleRegistrationModalClose}
         openRegistrationModal={openRegistrationModal}

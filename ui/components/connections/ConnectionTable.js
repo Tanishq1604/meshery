@@ -63,6 +63,7 @@ import { DeleteIcon } from '@layer5/sistent';
 
 import { formatDate } from '../DataFormatter';
 import { getFallbackImageBasedOnKind } from '@/utils/fallback';
+import { useRouter } from 'next/router';
 
 const ACTION_TYPES = {
   FETCH_CONNECTIONS: {
@@ -91,10 +92,17 @@ const ACTION_TYPES = {
   },
 };
 
-const ConnectionTable = ({ meshsyncControllerState, connectionMetadataState, selectedFilter }) => {
+const ConnectionTable = ({
+  meshsyncControllerState,
+  connectionMetadataState,
+  selectedFilter,
+  connectionId,
+}) => {
   const organization = useLegacySelector((state) => state.get('organization'));
   const ping = useKubernetesHook();
   const { width } = useWindowDimensions();
+  // Add this line to define isUserAction ref
+  const isUserAction = useRef(true);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState();
   const [sortOrder, setSortOrder] = useState('name asc');
@@ -480,6 +488,29 @@ const ConnectionTable = ({ meshsyncControllerState, connectionMetadataState, sel
     setRowData(tableMeta);
   };
   const theme = useTheme();
+  const router = useRouter();
+
+  // Deep linking functionality - just expand the row when ID is in the URL
+  // but don't modify the URL further
+  useEffect(() => {
+    if (connectionId && connections && connections.length > 0 && pageSize > 0) {
+      // Temporarily set isUserAction to false so onRowExpansionChange won't update URL
+      isUserAction.current = false;
+
+      const connectionIndex = connections.findIndex((conn) => conn.id === connectionId);
+      if (connectionIndex !== -1) {
+        // Only update rows expanded if different than current state
+        if (rowsExpanded.length === 0 || rowsExpanded[0] !== connectionIndex) {
+          setRowsExpanded([connectionIndex]);
+        }
+
+        const connectionPage = Math.floor(connectionIndex / pageSize);
+        if (connectionPage !== page) {
+          setPage(connectionPage);
+        }
+      }
+    }
+  }, [connectionId, connections, pageSize]);
 
   const columns = [
     {
@@ -966,7 +997,7 @@ const ConnectionTable = ({ meshsyncControllerState, connectionMetadataState, sel
       }
       switch (action) {
         case 'changePage':
-          setPage(tableState.page.toString());
+          setPage(tableState.page); // Changed from toString() to keep as number
           break;
         case 'changeRowsPerPage':
           setPageSize(tableState.rowsPerPage.toString());
@@ -993,11 +1024,58 @@ const ConnectionTable = ({ meshsyncControllerState, connectionMetadataState, sel
       return true;
     },
     onRowExpansionChange: (_, allRowsExpanded) => {
+      // First set the expanded rows immediately
       setRowsExpanded(allRowsExpanded.slice(-1).map((item) => item.index));
+
+      // Only update URL if this was triggered by a user click
+      if (isUserAction.current) {
+        // URL updating logic...
+        if (allRowsExpanded.length > 0) {
+          const lastExpanded = allRowsExpanded[allRowsExpanded.length - 1];
+          const expandedRowId = connections[lastExpanded.index]?.id;
+
+          if (expandedRowId && expandedRowId !== connectionId) {
+            router.push(
+              {
+                pathname: router.pathname,
+                query: {
+                  tab: 'connections',
+                  id: expandedRowId,
+                },
+              },
+              undefined,
+              { shallow: true },
+            );
+          }
+        } else if (connectionId) {
+          router.push(
+            {
+              pathname: router.pathname,
+              query: { tab: 'connections' },
+            },
+            undefined,
+            { shallow: true },
+          );
+        }
+      }
+
+      // IMPORTANT: Always reset the flag after handling
+      isUserAction.current = true;
     },
     renderExpandableRow: (rowData, tableMeta) => {
       const colSpan = rowData.length;
-      const connection = connections && connections[tableMeta.rowIndex];
+      // Add safety check to prevent errors when connections array is loading
+      // or tableMeta.rowIndex is out of bounds
+      if (!connections || !connections[tableMeta.rowIndex]) {
+        return (
+          <TableCell colSpan={colSpan}>
+            <div style={{ padding: '20px', textAlign: 'center' }}>Loading connection data...</div>
+          </TableCell>
+        );
+      }
+      
+      const connection = connections[tableMeta.rowIndex];
+
       return (
         <>
           <TableCell colSpan={colSpan}>
