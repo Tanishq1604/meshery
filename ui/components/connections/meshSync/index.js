@@ -47,8 +47,9 @@ export default function MeshSyncTable(props) {
   const { updateProgress, selectedK8sContexts, k8sconfig, resourceId } = props;
   const router = useRouter(); // Initialize router
   const callbackRef = useRef();
-  // Add this line to define isUserAction ref
+
   const isUserAction = useRef(true);
+  const resourceRowRef = useRef(null);
   const [openRegistrationModal, setRegistrationModal] = useState(false);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
@@ -420,84 +421,66 @@ export default function MeshSyncTable(props) {
     expandableRowsHeader: false,
     expandableRowsOnClick: true,
     rowsExpanded: rowsExpanded,
-    isRowExpandable: () => {
-      return true;
-    },
+    isRowExpandable: () => true,
     onRowExpansionChange: (_, allRowsExpanded) => {
-      setRowsExpanded(allRowsExpanded.slice(-1).map((item) => item.index));
+      const expandedRows = allRowsExpanded.slice(-1).map((item) => item.index);
+      setRowsExpanded(expandedRows);
 
-      // Only update URL if this was triggered by a user click, not by our URL-based useEffect
-      if (isUserAction.current) {
-        if (allRowsExpanded.length > 0) {
-          const lastExpanded = allRowsExpanded[allRowsExpanded.length - 1];
-          const expandedRowId = meshSyncResources[lastExpanded.index]?.id;
+      // Update URL based on expansion state
+      const currentQuery = { ...router.query };
 
-          if (expandedRowId && expandedRowId !== resourceId) {
-            router.push(
-              {
-                pathname: router.pathname,
-                query: {
-                  tab: 'meshsync',
-                  id: expandedRowId,
-                },
-              },
-              undefined,
-              { shallow: true },
-            );
-          }
-        } else if (resourceId) {
-          router.push(
-            {
-              pathname: router.pathname,
-              query: { tab: 'meshsync' },
-            },
-            undefined,
-            { shallow: true },
-          );
+      if (expandedRows.length > 0) {
+        const expandedResource = meshSyncResources[expandedRows[0]];
+        if (expandedResource) {
+          // Preserve existing query parameters and update tab and id
+          currentQuery.tab = 'meshsync';
+          currentQuery.id = expandedResource.id;
         }
+      } else {
+        // Remove id parameter while preserving other query parameters including tab
+        delete currentQuery.id;
+        currentQuery.tab = 'meshsync';
       }
 
-      // Reset the flag after handling
+
+      // Update URL with modified query parameters
+      router.push(
+        {
+          pathname: router.pathname,
+          query: currentQuery,
+        },
+        undefined,
+        { shallow: true },
+      );
+
       isUserAction.current = true;
     },
-    renderExpandableRow: (rowData) => {
+    renderExpandableRow: (rowData, tableMeta) => {
       const colSpan = rowData.length;
-      const columnName = 'metadata'; // Name of the column containing the metadata
-      const columnIndex = columns.findIndex((column) => column.name === columnName);
-
-      // Add safety check for when metadata might not be available
-      if (columnIndex === -1 || !rowData[columnIndex]) {
+      if (!meshSyncResources || !meshSyncResources[tableMeta.rowIndex]) {
         return (
           <TableCell colSpan={colSpan}>
-            <div style={{ padding: '20px', textAlign: 'center' }}>
-              No metadata available for this resource
-            </div>
+            <div style={{ padding: '20px', textAlign: 'center' }}>Loading resource data...</div>
           </TableCell>
         );
       }
 
-      // Access the metadata value using the column index
-      const metadata = rowData[columnIndex];
+      const resource = meshSyncResources[tableMeta.rowIndex];
 
       return (
         <TableCell colSpan={colSpan}>
           <InnerTableContainer>
             <Table>
-              <TableRow>
-                <TableCell>
-                  <Grid container style={{ textTransform: 'lowercase' }}>
-                    <ContentContainer
-                      item
-                      xs={12}
-                      md={12}
-                      style={{
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        padding: '0 20px',
-                        gap: 30,
-                      }}
-                    >
-                      <MeshSyncDataFormatter metadata={metadata} />
+
+              <TableRow style={{ padding: 0 }}>
+                <TableCell style={{ padding: '20px 0', overflowX: 'hidden' }}>
+                  <Grid container spacing={1}>
+                    <ContentContainer item xs={12} md={12}>
+                      <Grid container spacing={1}>
+                        <ContentContainer item xs={12} md={12}>
+                          <MeshSyncDataFormatter resource={resource} />
+                        </ContentContainer>
+                      </Grid>
                     </ContentContainer>
                   </Grid>
                 </TableCell>
@@ -507,6 +490,9 @@ export default function MeshSyncTable(props) {
         </TableCell>
       );
     },
+    rowProps: (rowData, rowIndex) => ({
+      ref: meshSyncResources[rowIndex]?.id === resourceId ? resourceRowRef : undefined,
+    }),
   };
 
   const handleError = (action) => (error) => {
@@ -561,27 +547,58 @@ export default function MeshSyncTable(props) {
     updateCols(columns);
   }, []);
 
-  // Deep linking functionality - just expand the row when ID is in the URL
-  // but don't modify the URL further
+  // Effect to handle ID-based row expansion
   useEffect(() => {
-    if (resourceId && meshSyncResources && meshSyncResources.length > 0 && pageSize > 0) {
-      // Temporarily set isUserAction to false so onRowExpansionChange won't update URL
+    if (resourceId && meshSyncResources?.length > 0) {
       isUserAction.current = false;
 
       const resourceIndex = meshSyncResources.findIndex((resource) => resource.id === resourceId);
+      
       if (resourceIndex !== -1) {
-        // Only update rows expanded if different than current state
-        if (rowsExpanded.length === 0 || rowsExpanded[0] !== resourceIndex) {
-          setRowsExpanded([resourceIndex]);
-        }
-
+        // Set the page if needed
         const resourcePage = Math.floor(resourceIndex / pageSize);
         if (resourcePage !== page) {
           setPage(resourcePage);
         }
+        
+        // Expand the row
+        setRowsExpanded([resourceIndex]);
+        
+        // Scroll into view after a delay to ensure the row is rendered
+        setTimeout(() => {
+          if (resourceRowRef.current) {
+            resourceRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 300);
       }
     }
   }, [resourceId, meshSyncResources, pageSize]);
+
+  // Add effect to handle URL updates when rows are expanded/collapsed
+  useEffect(() => {
+    if (isUserAction.current && meshSyncResources) {
+      const currentQuery = { ...router.query };
+      currentQuery.tab = 'meshsync'; // Always preserve meshsync tab
+      
+      if (rowsExpanded.length > 0) {
+        const expandedResource = meshSyncResources[rowsExpanded[0]];
+        if (expandedResource) {
+          currentQuery.id = expandedResource.id;
+        }
+      } else {
+        delete currentQuery.id;
+      }
+
+      router.push(
+        {
+          pathname: router.pathname,
+          query: currentQuery,
+        },
+        undefined,
+        { shallow: true }
+      );
+    }
+  }, [rowsExpanded]);
 
   return (
     <>

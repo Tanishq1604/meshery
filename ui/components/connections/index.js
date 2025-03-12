@@ -1,4 +1,6 @@
+
 import React, { useRef, useState } from 'react';
+
 import { NoSsr } from '@layer5/sistent';
 import { ErrorBoundary, AppBar } from '@layer5/sistent';
 import { connect } from 'react-redux';
@@ -95,14 +97,9 @@ function Connections(props) {
     e.stopPropagation();
     setTab(newTab);
 
-    // Update URL query parameters based on new tab
-    const tabName = newTab === 0 ? 'connections' : 'meshsync';
-    const query = { tab: tabName };
-
-    // Preserve the ID parameter if it exists
-    if (connectionId) {
-      query.id = connectionId;
-    }
+    // Simply update the tab parameter while preserving all other query parameters
+    const query = { ...router.query };
+    query.tab = newTab === 0 ? 'connections' : 'meshsync';
 
     // Update URL without triggering a full page reload
     router.push(
@@ -114,6 +111,14 @@ function Connections(props) {
       { shallow: true },
     );
   };
+
+  // Effect to sync tab state with URL
+  useEffect(() => {
+    const newTab = urlTab === 'meshsync' ? 1 : 0;
+    if (tab !== newTab) {
+      setTab(newTab);
+    }
+  }, [urlTab]);
 
   return (
     <NoSsr>
@@ -151,17 +156,19 @@ function Connections(props) {
 
           {tab === 0 && CAN(keys.VIEW_CONNECTIONS.action, keys.VIEW_CONNECTIONS.subject) && (
             <ConnectionTable
+              key={`connections-${connectionId || ''}`}
               meshsyncControllerState={meshsyncControllerState}
               connectionMetadataState={connectionMetadataState}
-              connectionId={tab === 0 ? connectionId : null} // Only pass ID when on connections tab
+              connectionId={connectionId}
             />
           )}
           {tab === 1 && (
             <MeshSyncTable
+              key={`meshsync-${connectionId || ''}`}
               updateProgress={updateProgress}
               selectedK8sContexts={selectedK8sContexts}
               k8sconfig={k8sconfig}
-              resourceId={tab === 1 ? connectionId : null} // Only pass ID when on meshsync tab
+              resourceId={connectionId}
             />
           )}
         </>

@@ -101,7 +101,7 @@ const ConnectionTable = ({
   const organization = useLegacySelector((state) => state.get('organization'));
   const ping = useKubernetesHook();
   const { width } = useWindowDimensions();
-  // Add this line to define isUserAction ref
+  const router = useRouter();
   const isUserAction = useRef(true);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState();
@@ -123,6 +123,7 @@ const ConnectionTable = ({
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
   const modalRef = useRef(null);
+  const connectionRowRef = useRef(null);
 
   const filters = {
     status: {
@@ -151,9 +152,6 @@ const ConnectionTable = ({
     setKindFilter(kindFilter);
     setStatusFilter(statusFilter);
   };
-  // lock for not allowing multiple updates at the same time
-  // needs to be a ref because it needs to be shared between renders
-  // and useState loses reactivity when down table custom cells
   const updatingConnection = useRef(false);
   const { notify } = useNotification();
 
@@ -336,15 +334,6 @@ const ConnectionTable = ({
         variant: PROMPT_VARIANTS.DANGER,
       });
       if (response === 'DELETE') {
-        // let bulkConnections = {}
-        // selected.data.map(({ index }) => {
-        //   bulkConnections = {
-        //     ...bulkConnections,
-        //     [connections[index].id]: CONNECTION_STATES.DELETED
-        //   };
-        // })
-        // const requestBody = JSON.stringify(bulkConnections);
-        // updateConnectionStatus(requestBody);
         selected.data.map(({ index }) => {
           const requestBody = JSON.stringify({
             [connections[index].id]: CONNECTION_STATES.DELETED,
@@ -376,7 +365,7 @@ const ConnectionTable = ({
 
       let response = await modalRef.current.show({
         title: `Flush MeshSync data for ${connection.metadata?.name} ?`,
-        subtitle: `Are you sure to Flush MeshSync data for “${connection.metadata?.name}”? Fresh MeshSync data will be repopulated for this context, if MeshSync is actively running on this cluster.`,
+        subtitle: `Are you sure to Flush MeshSync data for " ${connection.metadata?.name}"? Fresh MeshSync data will be repopulated for this context, if MeshSync is actively running on this cluster.`,
         primaryOption: 'PROCEED',
         variant: PROMPT_VARIANTS.WARNING,
       });
@@ -488,29 +477,57 @@ const ConnectionTable = ({
     setRowData(tableMeta);
   };
   const theme = useTheme();
-  const router = useRouter();
 
-  // Deep linking functionality - just expand the row when ID is in the URL
-  // but don't modify the URL further
+  // Effect to handle ID-based row expansion
   useEffect(() => {
-    if (connectionId && connections && connections.length > 0 && pageSize > 0) {
-      // Temporarily set isUserAction to false so onRowExpansionChange won't update URL
+    if (connectionId && connections && connections.length > 0) {
       isUserAction.current = false;
 
       const connectionIndex = connections.findIndex((conn) => conn.id === connectionId);
+      
       if (connectionIndex !== -1) {
-        // Only update rows expanded if different than current state
-        if (rowsExpanded.length === 0 || rowsExpanded[0] !== connectionIndex) {
-          setRowsExpanded([connectionIndex]);
-        }
-
+        // Set the page if needed
         const connectionPage = Math.floor(connectionIndex / pageSize);
         if (connectionPage !== page) {
           setPage(connectionPage);
         }
+        
+        // Expand the row
+        setRowsExpanded([connectionIndex]);
+        
+        // Scroll into view after a delay to ensure the row is rendered
+        setTimeout(() => {
+          if (connectionRowRef.current) {
+            connectionRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 300);
       }
     }
   }, [connectionId, connections, pageSize]);
+
+  useEffect(() => {
+    if (connections) {
+      const currentQuery = { ...router.query };
+      
+      if (rowsExpanded.length > 0) {
+        const expandedConnection = connections[rowsExpanded[0]];
+        if (expandedConnection) {
+          currentQuery.id = expandedConnection.id;
+        }
+      } else {
+        delete currentQuery.id;
+      }
+
+      router.push(
+        {
+          pathname: router.pathname,
+          query: currentQuery,
+        },
+        undefined,
+        { shallow: true }
+      );
+    }
+  }, [rowsExpanded]);
 
   const columns = [
     {
@@ -569,7 +586,6 @@ const ConnectionTable = ({
                   )
                 }
                 handlePing={() => {
-                  // e.stopPropagation();
                   if (getColumnValue(tableMeta.rowData, 'kind', columns) === 'kubernetes') {
                     ping(
                       getColumnValue(tableMeta.rowData, 'metadata.name', columns),
@@ -997,7 +1013,7 @@ const ConnectionTable = ({
       }
       switch (action) {
         case 'changePage':
-          setPage(tableState.page); // Changed from toString() to keep as number
+          setPage(tableState.page);
           break;
         case 'changeRowsPerPage':
           setPageSize(tableState.rowsPerPage.toString());
@@ -1024,48 +1040,38 @@ const ConnectionTable = ({
       return true;
     },
     onRowExpansionChange: (_, allRowsExpanded) => {
-      // First set the expanded rows immediately
-      setRowsExpanded(allRowsExpanded.slice(-1).map((item) => item.index));
+      const expandedRows = allRowsExpanded.slice(-1).map((item) => item.index);
+      setRowsExpanded(expandedRows);
 
-      // Only update URL if this was triggered by a user click
-      if (isUserAction.current) {
-        // URL updating logic...
-        if (allRowsExpanded.length > 0) {
-          const lastExpanded = allRowsExpanded[allRowsExpanded.length - 1];
-          const expandedRowId = connections[lastExpanded.index]?.id;
 
-          if (expandedRowId && expandedRowId !== connectionId) {
-            router.push(
-              {
-                pathname: router.pathname,
-                query: {
-                  tab: 'connections',
-                  id: expandedRowId,
-                },
-              },
-              undefined,
-              { shallow: true },
-            );
-          }
-        } else if (connectionId) {
-          router.push(
-            {
-              pathname: router.pathname,
-              query: { tab: 'connections' },
-            },
-            undefined,
-            { shallow: true },
-          );
+      // Update URL based on expansion state
+      const currentQuery = { ...router.query };
+      
+      if (expandedRows.length > 0) {
+        const expandedConnection = connections[expandedRows[0]];
+        if (expandedConnection) {
+          // Preserve tab parameter if it exists and add/update id
+          currentQuery.id = expandedConnection.id;
         }
+      } else {
+        // Remove id parameter while preserving other query parameters
+        delete currentQuery.id;
       }
 
-      // IMPORTANT: Always reset the flag after handling
+      // Update URL with modified query parameters
+      router.push(
+        {
+          pathname: router.pathname,
+          query: currentQuery,
+        },
+        undefined,
+        { shallow: true }
+      );
+
       isUserAction.current = true;
     },
     renderExpandableRow: (rowData, tableMeta) => {
       const colSpan = rowData.length;
-      // Add safety check to prevent errors when connections array is loading
-      // or tableMeta.rowIndex is out of bounds
       if (!connections || !connections[tableMeta.rowIndex]) {
         return (
           <TableCell colSpan={colSpan}>
@@ -1073,7 +1079,7 @@ const ConnectionTable = ({
           </TableCell>
         );
       }
-      
+
       const connection = connections[tableMeta.rowIndex];
 
       return (
@@ -1099,19 +1105,40 @@ const ConnectionTable = ({
         </>
       );
     },
+    rowProps: (rowData, rowIndex) => ({
+      ref: connections[rowIndex]?.id === connectionId ? connectionRowRef : undefined,
+    }),
   };
 
   const [tableCols, updateCols] = useState(columns);
 
   const [columnVisibility, setColumnVisibility] = useState(() => {
     let showCols = updateVisibleColumns(colViews, width);
-    // Initialize column visibility based on the original columns' visibility
     const initialVisibility = {};
     columns.forEach((col) => {
       initialVisibility[col.name] = showCols[col.name];
     });
     return initialVisibility;
   });
+
+  useEffect(() => {
+    updateCols(columns);
+    if (isEnvironmentsError) {
+      notify({
+        message: `${ACTION_TYPES.FETCH_ENVIRONMENT.error_msg}: ${environmentsError}`,
+        event_type: EVENT_TYPES.ERROR,
+        details: environmentsError.toString(),
+      });
+    }
+
+    if (isConnectionError) {
+      notify({
+        message: `${ACTION_TYPES.FETCH_CONNECTIONS.error_msg}: ${connectionError}`,
+        event_type: EVENT_TYPES.ERROR,
+        details: connectionError.toString(),
+      });
+    }
+  }, [environmentsError, connectionError, isEnvironmentsSuccess]);
 
   return (
     <>
