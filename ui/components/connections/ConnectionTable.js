@@ -496,14 +496,14 @@ const ConnectionTable = ({
   useEffect(() => {
     // Skip if we're already handling expansion or if there's no connection ID
     if (!selectedConnectionId || isHandlingExpansion.current) return;
-    
+
     // Skip if we've already processed this ID
     if (lastProcessedId.current === selectedConnectionId) return;
-    
+
     if (connections && connections.length > 0) {
       isUrlExpansion.current = true;
       lastProcessedId.current = selectedConnectionId;
-      
+
       const index = connections.findIndex((conn) => conn.id === selectedConnectionId);
       if (index !== -1) {
         setRowsExpanded([index]);
@@ -511,7 +511,7 @@ const ConnectionTable = ({
         // If connection doesn't exist, clear the URL parameter
         updateUrlWithConnectionId('');
       }
-      
+
       setTimeout(() => {
         isUrlExpansion.current = false;
       }, 100);
@@ -1032,9 +1032,8 @@ const ConnectionTable = ({
       return true;
     },
     onRowExpansionChange: (_, allRowsExpanded) => {
-  
       if (isUrlExpansion.current) return;
-      
+
       isHandlingExpansion.current = true;
       const expandedRows = allRowsExpanded.slice(-1);
       setRowsExpanded(expandedRows.map((item) => item.index));
@@ -1043,8 +1042,11 @@ const ConnectionTable = ({
         const index = expandedRows[0].index;
         const connection = connections[index];
 
-        if (connection && updateUrlWithConnectionId && 
-            (!isInitialLoad.current || connection.id !== selectedConnectionId)) {
+        if (
+          connection &&
+          updateUrlWithConnectionId &&
+          (!isInitialLoad.current || connection.id !== selectedConnectionId)
+        ) {
           updateUrlWithConnectionId(connection.id);
         }
       } else if (updateUrlWithConnectionId && !isInitialLoad.current) {

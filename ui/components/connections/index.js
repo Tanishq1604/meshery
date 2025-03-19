@@ -81,7 +81,6 @@ function Connections(props) {
   const _operatorStateRef = useRef(_operatorState);
   _operatorStateRef.current = _operatorState;
 
- 
   const isUpdatingUrl = useRef(false);
   const isMounted = useRef(false);
   const isExternalUrlChange = useRef(false);
@@ -106,13 +105,13 @@ function Connections(props) {
   // Listen to URL changes from outside and prevent re-rendering loops
   useEffect(() => {
     if (isUpdatingUrl.current) return;
-    
+
     isExternalUrlChange.current = true;
-    
+
     const timeout = setTimeout(() => {
       isExternalUrlChange.current = false;
     }, 100);
-    
+
     return () => clearTimeout(timeout);
   }, [router.asPath]);
 
@@ -133,18 +132,20 @@ function Connections(props) {
         delete newQuery.connectionId;
       }
 
-      router.push(
-        {
-          pathname: router.pathname,
-          query: newQuery,
-        },
-        undefined,
-        { shallow: true },
-      ).then(() => {
-        setTimeout(() => {
-          isUpdatingUrl.current = false;
-        }, 100);
-      });
+      router
+        .push(
+          {
+            pathname: router.pathname,
+            query: newQuery,
+          },
+          undefined,
+          { shallow: true },
+        )
+        .then(() => {
+          setTimeout(() => {
+            isUpdatingUrl.current = false;
+          }, 100);
+        });
     }
   }, [tab]);
 
@@ -167,35 +168,37 @@ function Connections(props) {
   // Function to update URL with connection ID, with safeguards for page load
   const updateUrlWithConnectionId = (id) => {
     if (isUpdatingUrl.current || isExternalUrlChange.current) return;
-    
+
     // If we're dealing with the initial connection from URL, don't update again
     if (!isMounted.current && id === connectionId) return;
-    
+
     // Skip update if the ID is already in the URL, but DON'T skip when clearing the ID (id is empty)
     if (id && id === connectionId) return;
-    
+
     isUpdatingUrl.current = true;
     const newQuery = { ...query };
-    
+
     if (id) {
       newQuery.connectionId = id;
     } else {
       delete newQuery.connectionId;
     }
-    
-    router.push(
-      {
-        pathname: router.pathname,
-        query: newQuery,
-      },
-      undefined,
-      { shallow: true },
-    ).then(() => {
-      // Reset the flag after URL update completes
-      setTimeout(() => {
-        isUpdatingUrl.current = false;
-      }, 100);
-    });
+
+    router
+      .push(
+        {
+          pathname: router.pathname,
+          query: newQuery,
+        },
+        undefined,
+        { shallow: true },
+      )
+      .then(() => {
+        // Reset the flag after URL update completes
+        setTimeout(() => {
+          isUpdatingUrl.current = false;
+        }, 100);
+      });
   };
 
   return (

@@ -477,7 +477,7 @@ export default function MeshSyncTable(props) {
     },
     onRowExpansionChange: (_, allRowsExpanded) => {
       if (isUrlExpansion.current) return;
-      
+
       isHandlingExpansion.current = true;
       const expandedRows = allRowsExpanded.slice(-1);
       setRowsExpanded(expandedRows.map((item) => item.index));
@@ -485,9 +485,12 @@ export default function MeshSyncTable(props) {
       if (expandedRows.length > 0 && meshSyncResources) {
         const index = expandedRows[0].index;
         const resource = meshSyncResources[index];
-        
-        if (resource && updateUrlWithResourceId && 
-            (!isInitialLoad.current || resource.id !== selectedResourceId)) {
+
+        if (
+          resource &&
+          updateUrlWithResourceId &&
+          (!isInitialLoad.current || resource.id !== selectedResourceId)
+        ) {
           updateUrlWithResourceId(resource.id);
         }
       } else if (updateUrlWithResourceId && !isInitialLoad.current) {
@@ -554,17 +557,17 @@ export default function MeshSyncTable(props) {
   const isInitialLoad = useRef(true);
   const isUrlExpansion = useRef(false);
   const lastProcessedId = useRef(null);
-  
+
   // Find and expand the selected resource when it becomes available
   useEffect(() => {
     if (!selectedResourceId || isHandlingExpansion.current) return;
     if (lastProcessedId.current === selectedResourceId) return;
-    
+
     // Only proceed if we have resources data
     if (meshSyncResources && meshSyncResources.length > 0) {
       isUrlExpansion.current = true;
       lastProcessedId.current = selectedResourceId;
-      
+
       const index = meshSyncResources.findIndex((resource) => resource.id === selectedResourceId);
       if (index !== -1) {
         setRowsExpanded([index]);
